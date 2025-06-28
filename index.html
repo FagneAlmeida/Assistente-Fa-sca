@@ -209,9 +209,14 @@
         function handleConversation(userInput) {
             switch (conversationState) {
                 case 'ASKING_NAME':
-                    customerData.name = userInput;
-                    conversationState = 'ASKING_MOTO';
-                    addMessage('assistant', `Prazer, ${customerData.name}! Agora, por favor, me diga a marca e o modelo da sua moto. (Ex: Honda Biz 125, Yamaha Fazer 250)`);
+                    // Validação para verificar se a entrada parece um nome
+                    if (userInput.split(' ').length > 4 || /\d/.test(userInput)) {
+                        addMessage('assistant', 'Desculpe, não entendi. Para oferecer um atendimento mais personalizado, **preciso que me informe apenas o seu nome**, por favor. 😊');
+                    } else {
+                        customerData.name = userInput;
+                        conversationState = 'ASKING_MOTO';
+                        addMessage('assistant', `Prazer, ${customerData.name}! Agora, por favor, me diga a marca e o modelo da sua moto. (Ex: Honda Biz 125, Yamaha Fazer 250)`);
+                    }
                     break;
                 case 'ASKING_MOTO':
                     customerData.moto = userInput;
