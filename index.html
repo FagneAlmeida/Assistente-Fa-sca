@@ -205,9 +205,8 @@
             }
         }
 
-        // **NOVO**: Função para validar se a entrada é um nome usando a IA
+        // Valida se a entrada é um nome usando a IA
         async function isValidName(name) {
-            // Se o nome for muito longo, já descarta para economizar a chamada de API
             if (name.split(' ').length > 5) return false;
 
             const validationPrompt = `A frase a seguir é um nome de uma pessoa ou um apelido? Responda apenas "SIM" ou "NÃO". Frase: "${name}"`;
@@ -220,19 +219,55 @@
                         generationConfig: { maxOutputTokens: 5 }
                     }),
                 });
-                if (!response.ok) return false; // Default to false on error
+                if (!response.ok) return false;
                 const data = await response.json();
                 const AIText = data.candidates[0].content.parts[0].text.trim().toUpperCase();
                 return AIText.includes('SIM');
             } catch (error) {
                 console.error("Name validation failed:", error);
-                // Em caso de falha da API, usa a lógica antiga como fallback
                 return !(name.split(' ').length > 4 || /\d/.test(name));
             }
+        }
+        
+        // **NOVO**: Função para lidar com perguntas gerais como endereço
+        function handleGeneralQuestions(userInput) {
+            const lowerCaseInput = userInput.toLowerCase();
+            const addressKeywords = ['endereço', 'onde fica', 'localização', 'local', 'rua'];
+            
+            if (addressKeywords.some(keyword => lowerCaseInput.includes(keyword))) {
+                const addressMessage = `Claro! Nosso endereço é Av. Fabio Zahran, 6628, Vila Carvalho, em Campo Grande-MS. [BUTTON:Ver no Mapa|https://www.google.com/maps/search/?api=1&query=Av.+Fabio+Zahran,+6628,+Vila+Carvalho,+Campo+Grande-MS]`;
+                addMessage('assistant', addressMessage);
+                
+                // Re-pergunta o que era esperado no estado atual
+                setTimeout(() => {
+                    let followupMessage = '';
+                    switch (conversationState) {
+                        case 'ASKING_NAME':
+                            followupMessage = 'Agora que já sabe onde estamos, pode me dizer o seu nome?';
+                            break;
+                        case 'ASKING_MOTO':
+                            followupMessage = `Certo, ${customerData.name}. Agora, de volta ao assunto, qual a marca e o modelo da sua moto?`;
+                            break;
+                        case 'ASKING_PROBLEM':
+                            followupMessage = 'Ok! E sobre a sua moto, qual o problema que ela está apresentando?';
+                            break;
+                    }
+                    if(followupMessage) addMessage('assistant', followupMessage);
+                }, 1000);
+
+                return true; // Indica que a pergunta foi tratada
+            }
+            return false; // Indica que não é uma pergunta geral
         }
 
         // Função principal que controla o fluxo da conversa (ATUALIZADA)
         async function handleConversation(userInput) {
+            // Primeiro, verifica se é uma pergunta geral (como endereço)
+            if (handleGeneralQuestions(userInput)) {
+                return; // Se foi, a função para por aqui
+            }
+            
+            // Se não for uma pergunta geral, continua com o fluxo normal
             switch (conversationState) {
                 case 'ASKING_NAME':
                     addMessage('assistant', 'typing');
@@ -256,7 +291,7 @@
                 case 'ASKING_PROBLEM':
                     customerData.problem = userInput;
                     conversationState = 'CONVERSATION_DONE';
-                    chatInput.disabled = true; // Desabilita o input
+                    chatInput.disabled = true;
                     sendBtn.disabled = true;
                     chatInput.placeholder = "Conversa finalizada.";
                     getDiagnosis();
