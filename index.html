@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centelha - Assistente Virtual | Oficina FG Motos</title>
+    
+    <!-- Tailwind CSS para um design moderno e responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts para uma tipografia mais agradável -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Estilização base e customizações */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Estilização da barra de rolagem para um visual mais limpo */
+        #chat-window::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-window::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #chat-window::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #chat-window::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Animação para o indicador de "digitando..." */
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            float: left;
+            margin: 0 1px;
+            background-color: #9E9EA1;
+            display: block;
+            border-radius: 50%;
+            opacity: 0.4;
+            animation: bob 1s infinite;
+        }
+        .typing-indicator span:nth-of-type(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-of-type(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes bob {
+            10% { transform: translateY(-5px); background-color: #777; }
+            50% { transform: translateY(0); background-color: #9E9EA1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+
+    <div id="chat-container" class="w-full max-w-lg h-full sm:h-[90vh] sm:max-h-[700px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        
+        <!-- Cabeçalho do Chat -->
+        <div id="chat-header" class="bg-gray-800 p-4 flex items-center gap-4 shadow-md z-10">
+             <!-- Você pode substituir este SVG pela sua logo -->
+            <div class="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+            </div>
+            <div>
+                <h2 class="text-white text-lg font-bold">Centelha, sua assistente ⚡</h2>
+                <span class="text-yellow-400 text-sm">Oficina FG Motos • Online</span>
+            </div>
+        </div>
+
+        <!-- Janela de Mensagens -->
+        <div id="chat-window" class="flex-1 p-4 sm:p-6 overflow-y-auto bg-gray-50">
+            <div id="chat-messages" class="flex flex-col gap-4">
+                <!-- As mensagens do chat serão inseridas aqui via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Área de Input -->
+        <div id="chat-input-container" class="p-4 bg-white border-t border-gray-200">
+            <div class="flex items-center bg-gray-100 rounded-full px-2">
+                <input type="text" id="chat-input" placeholder="Digite sua dúvida..." class="flex-1 bg-transparent p-3 text-gray-700 placeholder-gray-500 focus:outline-none">
+                <button id="send-btn" class="p-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- COLOQUE SUA CHAVE DE API AQUI ---
+        // É importante manter sua chave de API segura e não expô-la publicamente.
+        const API_KEY = ""; // INSIRA SUA CHAVE DA API DO GEMINI AQUI
+
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatWindow = document.getElementById('chat-window');
+
+        // Cérebro da Centelha
+        const systemPrompt = `
+        Voce e a Centelha, a assistente virtual da "Oficina FG Motos".
+
+        // MUDANÇA DE PERSONALIDADE: FOCO EM SER GENTIL E PRESTATIVA
+        Sua personalidade e a de uma especialista em motos muito amigavel, confiavel e prestativa. Seu principal objetivo e ajudar o cliente a se sentir seguro e bem-vindo.
+        Explique os problemas mecanicos de forma clara e didatica, para que o cliente entenda, mas sem usar textos longos demais. O tom deve ser sempre educado e paciente.
+        NUNCA use formatacao markdown, como asteriscos (*). Mantenha o texto limpo.
+
+        Regras principais:
+        1.  Apresentacao: Apresente-se como Centelha, a assistente da Oficina FG Motos, de forma amigavel.
+        2.  Diagnostico Preliminar: Ao receber a descricao de um problema, de uma lista com 2 ou 3 causas mais comuns.
+        3.  AVISO OBRIGATORIO: Apos o diagnostico, inclua este aviso: "Lembre-se que e so uma dica inicial, ta bom? Para um diagnostico preciso e seguro, o ideal e trazer sua moto para nossos mecanicos avaliarem."
+        4.  Chamar para Acao: Sempre convide o cliente para a oficina. Ex: "Quer agendar um horario com a gente pra dar uma olhadinha?".
+        5.  Informacoes da Oficina e BOTOES: Quando perguntarem sobre endereco ou contato, use as informacoes abaixo e o formato de botao [BUTTON:Texto|URL].
+            - Endereco: Av. Fabio Zahran, 6628, Vila Carvalho, Campo Grande-MS.
+            - WhatsApp: (67) 99927-1603.
+            - Horario de Atendimento: Segunda a Sexta, das 8h as 18h.
+            - INSTRUCAO PARA MAPA: Responda com o endereco e, na linha seguinte, use: [BUTTON:Ver no Mapa|https://www.google.com/maps/search/?api=1&query=Av.+Fabio+Zahran,+6628,+Vila+Carvalho,+Campo+Grande-MS]
+            - INSTRUCAO PARA WHATSAPP: Responda com o numero e, na linha seguinte, use: [BUTTON:Abrir WhatsApp|https://wa.me/5567999271603]
+        `;
+        
+        const welcomeMessage = "Olá! Sou a Centelha, a assistente virtual da Oficina FG Motos. Pronta para ser a ignição que resolve o seu problema. No que posso ajudar hoje? ⚡";
+
+        // Histórico da conversa inicializado com a personalidade e a saudação.
+        let conversationHistory = [
+            { role: 'user', parts: [{ text: systemPrompt }] },
+            { role: 'model', parts: [{ text: welcomeMessage }] }
+        ];
+
+        // Função para adicionar mensagens ao chat com o novo visual
+        function addMessage(sender, text) {
+            const messageContainer = document.createElement('div');
+            messageContainer.className = `w-full flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            let messageHTML = '';
+            
+            // Lógica para o indicador de "digitando..."
+            if (sender === 'assistant' && text === 'typing') {
+                messageHTML = `
+                    <div class="assistant-message bg-gray-200 text-gray-800 p-3 rounded-2xl rounded-bl-lg max-w-sm">
+                        <div class="typing-indicator">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                 const cleanText = text.replace(/\*/g, ""); 
+                 const buttonRegex = /\[BUTTON:(.+?)\|(.+?)\]/g;
+                 const textWithButtons = cleanText.replace(buttonRegex, (match, buttonText, url) => {
+                     return `
+                        <a href="${url}" target="_blank" class="chat-button block text-center mt-3 bg-yellow-500 text-white font-bold py-2 px-4 rounded-full hover:bg-yellow-600 transition-colors duration-200 no-underline">
+                           ${buttonText}
+                        </a>`;
+                 });
+
+                 if (sender === 'user') {
+                     messageHTML = `
+                        <div class="user-message bg-yellow-500 text-white p-3 rounded-2xl rounded-br-lg max-w-md">
+                            <p>${textWithButtons}</p>
+                        </div>
+                     `;
+                 } else {
+                     messageHTML = `
+                         <div class="assistant-message bg-gray-700 text-white p-3 rounded-2xl rounded-bl-lg max-w-md">
+                            <p>${textWithButtons}</p>
+                         </div>
+                     `;
+                 }
+            }
+           
+            messageContainer.innerHTML = messageHTML;
+            chatMessages.appendChild(messageContainer);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return messageContainer;
+        }
+
+        // Função para obter resposta da IA
+        async function getAIResponse(prompt) {
+            if (!API_KEY) {
+                return "Olá! Parece que a chave da API do Gemini não foi configurada. Por favor, peça ao administrador para inseri-la no código.";
+            }
+
+            conversationHistory.push({ role: 'user', parts: [{ text: prompt }] });
+            const requestBody = {
+                contents: conversationHistory,
+                generationConfig: { maxOutputTokens: 500 },
+            };
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error("Erro da API:", errorData);
+                    throw new Error(`Erro na API: ${errorData.error.message}`);
+                }
+                const data = await response.json();
+                const aiText = data.candidates[0].content.parts[0].text;
+                conversationHistory.push({ role: 'model', parts: [{ text: aiText }] });
+                return aiText;
+            } catch (error) {
+                console.error(error);
+                return "Ops! Parece que estou com um pequeno problema na minha conexão. Você pode tentar de novo em alguns instantes?";
+            }
+        }
+
+        // Função para lidar com o envio de mensagens
+        async function handleSend() {
+            const userInput = chatInput.value.trim();
+            if (userInput === '') return;
+
+            addMessage('user', userInput);
+            chatInput.value = '';
+            
+            const typingIndicator = addMessage('assistant', 'typing');
+            
+            const aiResponse = await getAIResponse(userInput);
+            
+            chatMessages.removeChild(typingIndicator);
+            addMessage('assistant', aiResponse);
+        }
+
+        // Event Listeners
+        sendBtn.addEventListener('click', handleSend);
+        chatInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Previne que a tecla Enter crie uma nova linha
+                handleSend();
+            }
+        });
+
+        // Adiciona a mensagem de boas-vindas inicial
+        window.onload = () => {
+             addMessage('assistant', welcomeMessage);
+        };
+
+    </script>
+</body>
+</html>
