@@ -17,6 +17,11 @@
         /* Estilização base e customizações */
         body {
             font-family: 'Inter', sans-serif;
+            /* Imagem de fundo da oficina */
+            background-image: url('https://storage.googleapis.com/gemini-prod-us-west1-assets/user/v1/11e00e0b/f0170a41-2a1f-4f24-9134-8c8f495143a4.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed; /* Mantém o fundo fixo ao rolar */
         }
 
         /* Estilização da barra de rolagem para um visual mais limpo */
@@ -59,13 +64,17 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center h-screen">
+<body class="flex items-center justify-center h-screen p-4">
 
-    <div id="chat-container" class="w-full max-w-lg h-full sm:h-[90vh] sm:max-h-[700px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <!-- Overlay para escurecer e desfocar o fundo, melhorando a legibilidade -->
+    <div class="absolute top-0 left-0 w-full h-full bg-black/60 backdrop-blur-sm"></div>
+
+    <!-- Container do Chat -->
+    <div id="chat-container" class="w-full max-w-lg h-full sm:h-[90vh] sm:max-h-[700px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden z-10 relative">
         
         <!-- Cabeçalho do Chat -->
         <div id="chat-header" class="bg-gray-800 p-4 flex items-center gap-4 shadow-md z-10">
-             <!-- Você pode substituir este SVG pela sua logo -->
+             <!-- Ícone da Centelha -->
             <div class="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center">
                  <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -98,9 +107,9 @@
     </div>
 
     <script>
-        // --- COLOQUE SUA CHAVE DE API AQUI ---
-        // É importante manter sua chave de API segura e não expô-la publicamente.
-        const API_KEY = "AIzaSyAesoSMUMRyIfd5zMmTEX3mg_00jdXCom8"; // INSIRA SUA CHAVE DA API DO GEMINI AQUI
+        // --- CHAVE DA API INSERIDA ---
+        // A chave que você forneceu foi colocada aqui.
+        const API_KEY = "AIzaSyAesoSMUMRyIfd5zMmTEX3mg_00jdXCom8"; 
 
         const chatInput = document.getElementById('chat-input');
         const sendBtn = document.getElementById('send-btn');
