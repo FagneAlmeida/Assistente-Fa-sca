@@ -229,7 +229,29 @@
             }
         }
         
-        // **NOVO**: Função para lidar com perguntas gerais como endereço
+        // **NOVO**: Função para validar se a entrada é uma moto usando a IA
+        async function isValidMoto(moto) {
+            const validationPrompt = `O texto a seguir é uma marca e modelo de motocicleta real (Ex: Honda CB 300, Yamaha Fazer 250)? Responda apenas "SIM" ou "NÃO". Texto: "${moto}"`;
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: validationPrompt }] }],
+                        generationConfig: { maxOutputTokens: 5 }
+                    }),
+                });
+                if (!response.ok) return false;
+                const data = await response.json();
+                const AIText = data.candidates[0].content.parts[0].text.trim().toUpperCase();
+                return AIText.includes('SIM');
+            } catch (error) {
+                console.error("Moto validation failed:", error);
+                return true; // Em caso de erro na API, assume que é válido para não bloquear o usuário.
+            }
+        }
+
+        // Função para lidar com perguntas gerais como endereço
         function handleGeneralQuestions(userInput) {
             const lowerCaseInput = userInput.toLowerCase();
             const addressKeywords = ['endereço', 'onde fica', 'localização', 'local', 'rua'];
@@ -262,18 +284,16 @@
 
         // Função principal que controla o fluxo da conversa (ATUALIZADA)
         async function handleConversation(userInput) {
-            // Primeiro, verifica se é uma pergunta geral (como endereço)
             if (handleGeneralQuestions(userInput)) {
-                return; // Se foi, a função para por aqui
+                return;
             }
             
-            // Se não for uma pergunta geral, continua com o fluxo normal
             switch (conversationState) {
                 case 'ASKING_NAME':
                     addMessage('assistant', 'typing');
                     const isName = await isValidName(userInput);
-                    const typingIndicator = document.querySelector('.typing-indicator')?.closest('.w-full');
-                    if(typingIndicator) typingIndicator.remove();
+                    const nameTypingIndicator = document.querySelector('.typing-indicator')?.closest('.w-full');
+                    if(nameTypingIndicator) nameTypingIndicator.remove();
 
                     if (isName) {
                         customerData.name = userInput;
@@ -284,9 +304,18 @@
                     }
                     break;
                 case 'ASKING_MOTO':
-                    customerData.moto = userInput;
-                    conversationState = 'ASKING_PROBLEM';
-                    addMessage('assistant', `Entendido. E qual o problema que a sua ${customerData.moto} está apresentando?`);
+                    addMessage('assistant', 'typing');
+                    const isMoto = await isValidMoto(userInput);
+                    const motoTypingIndicator = document.querySelector('.typing-indicator')?.closest('.w-full');
+                    if(motoTypingIndicator) motoTypingIndicator.remove();
+
+                    if (isMoto) {
+                        customerData.moto = userInput;
+                        conversationState = 'ASKING_PROBLEM';
+                        addMessage('assistant', `Entendido. E qual o problema que a sua ${customerData.moto} está apresentando?`);
+                    } else {
+                        addMessage('assistant', 'Não reconheci como um modelo de moto. Por favor, tente informar a marca e o modelo novamente, como "Honda Biz" ou "Yamaha Fazer".');
+                    }
                     break;
                 case 'ASKING_PROBLEM':
                     customerData.problem = userInput;
