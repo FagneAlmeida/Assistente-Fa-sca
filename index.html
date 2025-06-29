@@ -3,6 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- CORREÇÃO DE SEGURANÇA: Adicionada uma Política de Segurança de Conteúdo (CSP) -->
+    <!-- Isso limita de onde os recursos (scripts, fontes, etc.) podem ser carregados, reduzindo o risco de ataques de injeção de código. -->
+    <meta http-equiv="Content-Security-Policy" 
+          content="default-src 'self'; 
+                   script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://www.gstatic.com; 
+                   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+                   font-src 'self' https://fonts.gstatic.com;
+                   connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://callgemini-g3vol52jhq-uc.a.run.app;
+                   frame-src 'self';
+                   object-src 'none';
+                   base-uri 'self';">
+
     <title>Centelha - Assistente Inteligente | Oficina FG Motos</title>
     
     <!-- Tailwind CSS -->
@@ -129,7 +142,7 @@
         let appState = {
             isAuthReady: false, userId: null, chatId: null, isThinking: false,
             conversationHistory: [], customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
-            db: null, auth: null, unsubscribe: null,    
+            db: null, auth: null, unsubscribe: null,     
             appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
             renderedMessageIds: new Set()
         };
@@ -164,8 +177,19 @@
             const copyButtonRegex = /\[COPYBUTTON:([^|]+)\|([^\]]+)\]/g;
             let sanitizedText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
+            // CORREÇÃO DE SEGURANÇA: Prevenção contra Cross-Site Scripting (XSS) em botões.
+            // Validamos se a URL começa com http:// ou https:// antes de renderizar a tag <a>.
             let htmlText = sanitizedText
-                .replace(buttonRegex, (match, buttonText, url) => `<a href="${url}" target="_blank" class="chat-action-button bg-gradient-to-br from-yellow-400 to-orange-500 text-white">${buttonText}</a>`)
+                .replace(buttonRegex, (match, buttonText, url) => {
+                    const safeUrl = url.trim();
+                    // Só cria o link se for um protocolo web válido.
+                    if (safeUrl.startsWith('https://') || safeUrl.startsWith('http://')) {
+                        return `<a href="${encodeURI(safeUrl)}" target="_blank" rel="noopener noreferrer" class="chat-action-button bg-gradient-to-br from-yellow-400 to-orange-500 text-white">${buttonText}</a>`;
+                    }
+                    // Se a URL for inválida (ex: javascript:...), não renderiza o link.
+                    console.warn('Tentativa de renderizar botão com URL inválida foi bloqueada:', safeUrl);
+                    return `[Botão com link inválido]`;
+                })
                 .replace(copyButtonRegex, (match, buttonText, textToCopy) => `<button data-copytext="${textToCopy.replace(/"/g, '&quot;')}" class="chat-action-button bg-gray-600 text-white">${buttonText}</button>`);
 
             const messageBubble = sender === 'user'
@@ -290,10 +314,24 @@
             }
         }
         
+        // CORREÇÃO DE SEGURANÇA: Protegendo a API de Backend.
+        // A função agora obtém um token de autenticação do Firebase do usuário logado.
+        // Este token é enviado no cabeçalho 'Authorization' para o backend.
+        // O backend DEVE ser configurado para validar este token antes de processar a requisição.
         async function callBackendAPI(payload) {
+            if (!appState.auth.currentUser) {
+                throw new Error("Usuário não autenticado. Impossível chamar o backend.");
+            }
+
+            // Obtém o token de ID do usuário atual para autenticar a requisição.
+            const idToken = await appState.auth.currentUser.getIdToken();
+
             const response = await fetch(config.backendApiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}` // Envia o token para o backend.
+                },
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
@@ -395,26 +433,19 @@
             
             let firebaseConfig;
             try {
-                // Tenta carregar a configuração segura do ambiente primeiro.
+                // A única forma segura de carregar a configuração é através da variável de ambiente injetada.
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                     console.log("Configuração do Firebase encontrada no ambiente. Usando a versão segura.");
                     firebaseConfig = JSON.parse(__firebase_config);
                 } else {
-                    // Lança um erro para ser pego pelo bloco catch se a variável de ambiente não existir.
                     throw new Error("Variável de ambiente __firebase_config não encontrada.");
                 }
             } catch (e) {
-                // Se falhar (ex: no preview local), usa a configuração de fallback.
-                console.warn(`AVISO: ${e.message} Usando configuração de fallback para DESENVOLVIMENTO. NÃO USE EM PRODUÇÃO.`);
-                firebaseConfig = {
-                    apiKey: "AIzaSyBYSzG5XKIvCa1iFVOjALdooVSf1HsyeJ8",
-                    authDomain: "centelha-e931b.firebaseapp.com",
-                    projectId: "centelha-e931b",
-                    storageBucket: "centelha-e931b.appspot.com",
-                    messagingSenderId: "639426563285",
-                    appId: "1:639426563285:web:676bc24c3f32475478a65c",
-                    measurementId: "G-BR4P0XVTPB"
-                };
+                // CORREÇÃO DE SEGURANÇA: Removida a configuração de fallback insegura.
+                // O aplicativo agora irá falhar de forma segura se a configuração não for fornecida pelo ambiente.
+                console.error(`ERRO CRÍTICO: ${e.message} A configuração do Firebase é obrigatória. O aplicativo não pode iniciar.`);
+                addMessageToUI('assistant', 'Erro crítico de configuração. O chat não pode ser inicializado.', 'err-config-fatal');
+                return; // Impede a continuação da execução.
             }
 
             if (!firebaseConfig || !firebaseConfig.projectId) {
