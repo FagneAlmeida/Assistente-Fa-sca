@@ -219,13 +219,14 @@
             }
         }
         
+        // CORREÇÃO: Lógica do listener refeita para orquestrar a conversa e evitar a condição de corrida.
         function listenToMessages() {
             if (appState.unsubscribe) appState.unsubscribe();
             const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                // Lógica de renderização mais robusta: limpa e redesenha a partir da fonte da verdade (Firestore)
+                // Limpa e redesenha a UI e o estado a partir do Firestore (fonte da verdade)
                 elements.chatMessages.innerHTML = '';
                 appState.renderedMessageIds.clear();
                 appState.conversationHistory = [];
@@ -236,11 +237,12 @@
                     let textForUI = data.text;
                     let textForHistory = data.text;
 
-                    // A IA salva um JSON, mas mostramos apenas o `responseText`
+                    // A IA salva um JSON, mas mostramos apenas o `responseText` na UI
                     if (data.sender === 'assistant') {
                         try {
                             const parsed = JSON.parse(data.text);
                             textForUI = parsed.responseText || data.text;
+                            textForHistory = JSON.stringify(parsed); // Mantém o JSON completo para o histórico
                         } catch (e) { /* Se não for JSON, usa o texto como está */ }
                     }
                     
@@ -251,8 +253,25 @@
                     });
                 });
 
-                if (snapshot.empty) { startConversation(); }
-                
+                if (snapshot.empty) {
+                    startConversation();
+                    return;
+                }
+
+                // Verifica se a IA precisa responder
+                const lastMessage = appState.conversationHistory[appState.conversationHistory.length - 1];
+                if (lastMessage && lastMessage.role === 'user' && !appState.isThinking) {
+                    handleConversation();
+                } else if (lastMessage && lastMessage.role === 'model') {
+                    // Se a última mensagem é da IA, para de pensar e mostra as respostas rápidas
+                    toggleThinking(false);
+                    try {
+                        const lastResponse = JSON.parse(lastMessage.parts[0].text);
+                        renderQuickReplies(lastResponse.quickReplies || []);
+                    } catch(e) {
+                        renderQuickReplies([]);
+                    }
+                }
             }, (error) => {
                 console.error("Erro ao ouvir mensagens:", error);
                 addMessageToUI('assistant', 'Não foi possível carregar o histórico. Por favor, atualize a página.', 'error-load');
@@ -264,11 +283,14 @@
             if (!appState.isAuthReady || !appState.db) return;
             if (appState.unsubscribe) appState.unsubscribe();
             toggleThinking(true);
+            // Limpa o estado local. A função listenToMessages irá preenchê-lo.
+            appState.conversationHistory = [];
+            appState.customerData = { name: '', moto: '', problem: '', preAnalysis: '' };
             try {
                 const chatsCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats`);
                 const newChatRef = await addDoc(chatsCol, { createdAt: serverTimestamp(), userId: appState.userId });
                 appState.chatId = newChatRef.id;
-                listenToMessages();
+                listenToMessages(); // O listener vai detectar o chat vazio e iniciar a conversa
             } catch (error) {
                 console.error("Erro ao criar novo chat:", error);
                 toggleThinking(false);
@@ -294,8 +316,8 @@
             
             try {
                 const responseJson = await callBackendAPI({ history: [{ role: 'user', parts: [{ text: diagnosisPrompt }] }], systemPrompt });
-                const diagnosisText = responseJson.responseText.trim();
-                appState.customerData.preAnalysis = diagnosisText;
+                appState.customerData.preAnalysis = responseJson.responseText.trim();
+                // Salva a resposta do diagnóstico. O listener vai renderizar e parar o "thinking".
                 await saveMessage('assistant', JSON.stringify(responseJson));
                 setTimeout(generateWhatsAppLink, 500);
             } catch (error) {
@@ -314,46 +336,58 @@
             const encodedText = encodeURIComponent(fullText);
             const whatsappUrl = `https://wa.me/${config.whatsappNumber}?text=${encodedText}`;
             const transferMessage = { responseText: `Obrigado pelas informações! Para agilizar seu atendimento, preparei um resumo. Clique no botão para enviar no WhatsApp ou copie o texto. [BUTTON:Falar com a Equipa|${whatsappUrl}] [COPYBUTTON:Copiar Resumo|${fullText}]` };
+            // Salva a mensagem final. O listener vai renderizá-la.
             await saveMessage('assistant', JSON.stringify(transferMessage));
-            toggleThinking(false);
         }
 
+        // CORREÇÃO: Função chamada pelo listener, usa o estado atual já sincronizado.
         async function handleConversation() {
             toggleThinking(true);
             renderQuickReplies([]);
             try {
+                // A história já está atualizada pelo listener, então a chamada é segura.
+                if (appState.conversationHistory.length === 0) {
+                     throw new Error("Tentativa de chamar a IA com histórico vazio.");
+                }
                 const jsonResponse = await callBackendAPI({ history: appState.conversationHistory, systemPrompt });
                 appState.customerData = { ...appState.customerData, ...jsonResponse.extractedData };
+                
+                // Salva a resposta da IA. O listener vai renderizar e decidir o próximo passo.
                 await saveMessage('assistant', JSON.stringify(jsonResponse));
+                
                 const allDataCollected = appState.customerData.name && appState.customerData.moto && appState.customerData.problem;
                 if (jsonResponse.conversationState === 'READY_FOR_DIAGNOSIS' || allDataCollected) {
                     setTimeout(getDiagnosis, 500);
-                } else {
-                    toggleThinking(false);
                 }
             } catch (error) {
                 console.error("Erro na Conversa:", error);
                 const errorMsg = { responseText: "Desculpe, tive um pequeno curto-circuito aqui. Poderia repetir a sua última mensagem, por favor?" };
                 await saveMessage('assistant', JSON.stringify(errorMsg));
-                toggleThinking(false);
             }
         }
         
+        // CORREÇÃO: Função simplificada. Apenas salva a mensagem do usuário.
         async function handleSend() {
             const userInput = elements.chatInput.value.trim();
             if (userInput === '' || appState.isThinking) return;
+            
+            const textToSave = userInput;
             elements.chatInput.value = '';
-            await saveMessage('user', userInput);
-            await handleConversation();
+            renderQuickReplies([]);
+
+            // Apenas salva a mensagem do usuário. O listener `listenToMessages`
+            // vai detectar essa nova mensagem e chamar `handleConversation`.
+            await saveMessage('user', textToSave);
         }
         
+        // CORREÇÃO: Função simplificada. Apenas salva a mensagem inicial.
         async function startConversation() {
             const welcomeMessage = {
                 responseText: "Olá! Sou a Centelha, a sua assistente da Oficina FG Motos. Para começarmos, qual é o seu nome?",
                 quickReplies: ["Meu nome é...", "Queria saber o endereço"]
             };
+            // Salva a mensagem de boas-vindas. O listener vai renderizá-la.
             await saveMessage('assistant', JSON.stringify(welcomeMessage));
-            toggleThinking(false);
         }
 
         function attachEventListeners() {
