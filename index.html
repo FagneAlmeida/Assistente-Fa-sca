@@ -17,38 +17,25 @@
     <script src="https://unpkg.com/lucide@0.378.0/dist/umd/lucide.min.js"></script>
 
     <style>
-        /* Estilização base com um tema mais sofisticado */
         body {
             font-family: 'Inter', sans-serif;
-            background: #111827; /* Fundo escuro */
+            background: #111827;
         }
-
-        /* Animação para surgimento suave das mensagens */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
         .chat-message {
             animation: fadeIn 0.3s ease-out;
         }
-
-        /* Estilização da barra de rolagem */
         #chat-window::-webkit-scrollbar { width: 6px; }
         #chat-window::-webkit-scrollbar-track { background: transparent; }
         #chat-window::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
         #chat-window::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-
-        /* Animação para o indicador de "digitando..." */
         .typing-indicator span {
-            height: 8px;
-            width: 8px;
-            float: left;
-            margin: 0 1px;
-            background-color: #9ca3af;
-            display: block;
-            border-radius: 50%;
-            opacity: 0.4;
+            height: 8px; width: 8px; float: left; margin: 0 1px;
+            background-color: #9ca3af; display: block;
+            border-radius: 50%; opacity: 0.4;
             animation: bob 1s infinite;
         }
         .typing-indicator span:nth-of-type(2) { animation-delay: 0.2s; }
@@ -57,9 +44,13 @@
             10% { transform: translateY(-6px); opacity: 1; }
             50% { transform: translateY(0); opacity: 0.4; }
         }
-        .chat-button {
+        .chat-action-button {
             text-decoration: none !important;
+            display: block; text-align: center; margin-top: 0.75rem;
+            font-weight: 700; padding: 10px 16px; border-radius: 9999px;
+            transition: opacity 0.2s; cursor: pointer; border: none;
         }
+        .chat-action-button:hover { opacity: 0.9; }
     </style>
 </head>
 <body class="flex items-center justify-center h-screen p-4">
@@ -85,15 +76,11 @@
 
         <!-- Janela de Mensagens -->
         <div id="chat-window" class="flex-1 p-4 sm:p-6 overflow-y-auto bg-gray-800">
-            <div id="chat-messages" class="flex flex-col gap-4">
-                <!-- Mensagens inseridas via JavaScript -->
-            </div>
+            <div id="chat-messages" class="flex flex-col gap-4"></div>
         </div>
         
         <!-- Sugestões de Respostas Rápidas -->
-        <div id="quick-replies-container" class="p-2 pt-0 flex flex-wrap gap-2 justify-start px-4">
-            <!-- Botões de resposta rápida inseridos aqui -->
-        </div>
+        <div id="quick-replies-container" class="p-2 pt-0 flex flex-wrap gap-2 justify-start px-4"></div>
 
         <!-- Área de Input -->
         <div id="chat-input-container" class="p-4 bg-gray-800 border-t border-gray-700">
@@ -118,108 +105,45 @@
         </div>
     </div>
 
-
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, addDoc, onSnapshot, query, serverTimestamp, orderBy, deleteDoc, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Configuração do Firebase (para GitHub) ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBYSzG5XKIvCa1iFVOjALdooVSf1HsyeJ8",
-            authDomain: "centelha-e931b.firebaseapp.com",
-            projectId: "centelha-e931b",
-            storageBucket: "centelha-e931b.appspot.com", // Formato padrão para o SDK
-            messagingSenderId: "639426563285",
-            appId: "1:639426563285:web:676bc24c3f32475478a65c",
-            measurementId: "G-BR4P0XVTPB"
-        };
-
-        // IMPORTANTE: Insira aqui a sua chave da API Gemini
-        const apiKey = "AIzaSyBTMLgu3Dqao9-EhnfaqIWYpXMNqU1ixRg"; 
-
-        // --- Elementos do DOM ---
-        const elements = {
-            chatInput: document.getElementById('chat-input'),
-            sendBtn: document.getElementById('send-btn'),
-            chatMessages: document.getElementById('chat-messages'),
-            chatWindow: document.getElementById('chat-window'),
-            newChatBtn: document.getElementById('new-chat-btn'),
-            quickRepliesContainer: document.getElementById('quick-replies-container'),
-            modal: {
-                container: document.getElementById('confirmation-modal'),
-                text: document.getElementById('modal-text'),
-                cancelBtn: document.getElementById('cancel-btn'),
-                confirmBtn: document.getElementById('confirm-btn')
-            }
-        };
-
-        // --- Estado da Aplicação ---
-        let appState = {
-            isAuthReady: false,
-            userId: null,
-            chatId: null,
-            isThinking: false,
-            conversationHistory: [],
-            customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
-            db: null,
-            auth: null,
-            unsubscribe: null, 
+        // --- Configuração da Aplicação ---
+        const config = {
+            whatsappNumber: "5567999271603",
+            // A URL DA SUA CLOUD FUNCTION!
+            backendApiUrl: "https://callgemini-g3vol52jhq-uc.a.run.app"
         };
         
-        // --- CÉREBRO DA CENTELHA: Instruções para a IA ---
-        const systemPrompt = `
-            Você é a Centelha, uma assistente virtual especialista em motocicletas da "Oficina FG Motos".
-            Sua personalidade é amigável, técnica e eficiente.
-            Seu objetivo é coletar NOME, MODELO DA MOTO e o PROBLEMA.
+        const systemPrompt = `Você é a Centelha, uma assistente virtual especialista em motocicletas da "Oficina FG Motos". Sua personalidade é amigável, técnica e eficiente. Seu objetivo é coletar NOME, MODELO DA MOTO e o PROBLEMA. RESPONDA SEMPRE EM FORMATO JSON VÁLIDO com a seguinte estrutura: {"responseText": "Sua resposta conversacional para o usuário.", "conversationState": "STATE", "extractedData": { "name": "...", "moto": "...", "problem": "..." }, "quickReplies": ["Opção 1", "Opção 2"]}. REGRAS: 1. 'conversationState': Mude o estado: ASKING_FOR_DATA, READY_FOR_DIAGNOSIS, GENERAL_QUESTION. 2. 'extractedData': Preencha com os dados da MENSAGEM MAIS RECENTE. Mantenha os dados já coletados. 3. 'quickReplies': Ofereça sugestões ÚTEIS. 4. 'responseText': Seja claro. Peça um dado de cada vez. 5. NUNCA use markdown. INFORMAÇÕES DA OFICINA: Endereço: Av. Fabio Zahran, 6628, Vila Carvalho, Campo Grande-MS. WhatsApp: +5567999271603. Horário: Segunda a Sexta, das 8h às 18h.`;
 
-            RESPONDA SEMPRE EM FORMATO JSON VÁLIDO com a seguinte estrutura:
-            {
-              "responseText": "Sua resposta conversacional para o usuário.",
-              "conversationState": "STATE",
-              "extractedData": { "name": "...", "moto": "...", "problem": "..." },
-              "quickReplies": ["Opção 1", "Opção 2"]
-            }
+        const elements = {
+            chatInput: document.getElementById('chat-input'), sendBtn: document.getElementById('send-btn'),
+            chatMessages: document.getElementById('chat-messages'), chatWindow: document.getElementById('chat-window'),
+            newChatBtn: document.getElementById('new-chat-btn'), quickRepliesContainer: document.getElementById('quick-replies-container'),
+            modal: { container: document.getElementById('confirmation-modal'), text: document.getElementById('modal-text'), cancelBtn: document.getElementById('cancel-btn'), confirmBtn: document.getElementById('confirm-btn') }
+        };
 
-            REGRAS DE LÓGICA:
-            1. 'conversationState': Mude o estado conforme o andamento:
-               - ASKING_FOR_DATA: Quando ainda precisa de alguma das três informações.
-               - READY_FOR_DIAGNOSIS: Quando JÁ TEM nome, moto E problema.
-               - GENERAL_QUESTION: Se o usuário fez uma pergunta geral (ex: endereço, horário). Responda e depois volte ao fluxo principal de coleta de dados.
-
-            2. 'extractedData': Preencha com os dados da MENSAGEM MAIS RECENTE. Mantenha os dados já coletados. Se o usuário corrigir uma informação, atualize-a. Se a informação não for fornecida, deixe como string vazia.
-
-            3. 'quickReplies': Ofereça sugestões ÚTEIS. Ex: ao perguntar o problema, sugira ["Não liga", "Faz barulho estranho"]. Mantenha o array vazio ([]) se não houver boas sugestões.
-
-            4. 'responseText': Seja claro. Peça um dado de cada vez. Se já tiver o nome, peça a moto. Se já tiver a moto, peça o problema.
-
-            5. NUNCA use markdown (*, #, etc.) em 'responseText'.
-
-            INFORMAÇÕES DA OFICINA:
-            - Endereço: Av. Fabio Zahran, 6628, Vila Carvalho, Campo Grande-MS.
-            - WhatsApp: +5567999271603
-            - Horário: Segunda a Sexta, das 8h às 18h.
-        `;
-
-        // --- Funções da Interface (UI) ---
-
+        let appState = {
+            isAuthReady: false, userId: null, chatId: null, isThinking: false,
+            conversationHistory: [], customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
+            db: null, auth: null, unsubscribe: null, 
+            appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
+            renderedMessageIds: new Set()
+        };
+        
         function toggleThinking(isThinking) {
             appState.isThinking = isThinking;
             elements.chatInput.disabled = isThinking;
             elements.sendBtn.disabled = isThinking;
             elements.chatInput.placeholder = isThinking ? "Centelha está a pensar..." : "Digite a sua mensagem...";
-            
             const typingIndicator = document.querySelector('.typing-indicator-container');
             if (typingIndicator) typingIndicator.remove();
-            
             if (isThinking) {
-                const indicatorHTML = `
-                    <div class="w-full flex justify-start typing-indicator-container chat-message">
-                        <div class="bg-gray-700 text-gray-800 p-3 rounded-2xl rounded-bl-lg max-w-sm">
-                            <div class="typing-indicator"><span></span><span></span><span></span></div>
-                        </div>
-                    </div>`;
+                const indicatorHTML = `<div class="w-full flex justify-start typing-indicator-container chat-message"><div class="bg-gray-700 text-gray-800 p-3 rounded-2xl rounded-bl-lg max-w-sm"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
                 elements.chatMessages.insertAdjacentHTML('beforeend', indicatorHTML);
                 scrollToBottom();
             } else {
@@ -227,137 +151,123 @@
             }
         }
         
-        function addMessageToUI(sender, text, quickReplies = []) {
+        function addMessageToUI(sender, text, messageId) {
+            if (messageId && appState.renderedMessageIds.has(messageId)) return;
+            if (messageId) appState.renderedMessageIds.add(messageId);
+
             const typingIndicator = document.querySelector('.typing-indicator-container');
             if (typingIndicator) typingIndicator.remove();
 
             const messageContainer = document.createElement('div');
             messageContainer.className = `w-full flex chat-message ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
             
-            const buttonRegex = /\[BUTTON:(.+?)\|(.+?)\]/g;
+            const buttonRegex = /\[BUTTON:([^|]+)\|([^\]]+)\]/g;
+            const copyButtonRegex = /\[COPYBUTTON:([^|]+)\|([^\]]+)\]/g;
             let sanitizedText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
-            const textWithButtons = sanitizedText.replace(buttonRegex, (match, buttonText, url) => {
-                return `<a href="${url}" target="_blank" class="chat-button block text-center mt-3 bg-gradient-to-br from-yellow-400 to-orange-500 text-white font-bold py-2.5 px-4 rounded-full hover:opacity-90 transition-opacity no-underline">${buttonText}</a>`;
-            });
+            let htmlText = sanitizedText
+                .replace(buttonRegex, (match, buttonText, url) => `<a href="${url}" target="_blank" class="chat-action-button bg-gradient-to-br from-yellow-400 to-orange-500 text-white">${buttonText}</a>`)
+                .replace(copyButtonRegex, (match, buttonText, textToCopy) => `<button data-copytext="${textToCopy.replace(/"/g, '&quot;')}" class="chat-action-button bg-gray-600 text-white">${buttonText}</button>`);
 
             const messageBubble = sender === 'user'
-                ? `<div class="bg-gradient-to-br from-yellow-400 to-orange-500 text-white p-3 rounded-2xl rounded-br-lg max-w-md shadow-md"><p>${textWithButtons}</p></div>`
-                : `<div class="bg-gray-700 text-gray-100 p-3 rounded-2xl rounded-bl-lg max-w-md shadow-md"><p>${textWithButtons}</p></div>`;
+                ? `<div class="bg-gradient-to-br from-yellow-400 to-orange-500 text-white p-3 rounded-2xl rounded-br-lg max-w-md shadow-md"><p>${htmlText}</p></div>`
+                : `<div class="bg-gray-700 text-gray-100 p-3 rounded-2xl rounded-bl-lg max-w-md shadow-md"><p>${htmlText}</p></div>`;
             
             messageContainer.innerHTML = messageBubble;
             elements.chatMessages.appendChild(messageContainer);
-            renderQuickReplies(quickReplies);
             scrollToBottom();
         }
 
         function renderQuickReplies(replies = []) {
             elements.quickRepliesContainer.innerHTML = '';
             if (!replies || replies.length === 0) return;
-
             replies.forEach(reply => {
                 const button = document.createElement('button');
                 button.textContent = reply;
                 button.className = "px-3 py-1.5 bg-gray-700 text-gray-200 rounded-full text-sm hover:bg-gray-600 transition-colors";
-                button.onclick = () => {
-                    elements.chatInput.value = reply;
-                    handleSend();
-                };
+                button.onclick = () => { elements.chatInput.value = reply; handleSend(); };
                 elements.quickRepliesContainer.appendChild(button);
             });
         }
         
-        function scrollToBottom() {
-            elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight;
-        }
+        function scrollToBottom() { elements.chatWindow.scrollTop = elements.chatWindow.scrollHeight; }
         
         function showModal(text, onConfirm) {
             elements.modal.text.textContent = text;
             elements.modal.container.classList.remove('hidden');
             elements.modal.container.classList.add('flex');
-            
             const newConfirmBtn = elements.modal.confirmBtn.cloneNode(true);
             elements.modal.confirmBtn.parentNode.replaceChild(newConfirmBtn, elements.modal.confirmBtn);
             elements.modal.confirmBtn = newConfirmBtn;
-            
-            elements.modal.confirmBtn.onclick = () => {
-                onConfirm();
-                hideModal();
-            };
+            elements.modal.confirmBtn.onclick = () => { onConfirm(); hideModal(); };
         }
 
         function hideModal() {
             elements.modal.container.classList.add('hidden');
             elements.modal.container.classList.remove('flex');
         }
-
-        // --- Funções do Firestore ---
-
+        
         async function saveMessage(sender, text) {
-            if (!appState.isAuthReady || !appState.chatId || !appState.db) return;
+            if (!appState.isAuthReady || !appState.chatId || !appState.db) return null;
             try {
-                const messagesCol = collection(appState.db, `users/${appState.userId}/chats/${appState.chatId}/messages`);
-                await addDoc(messagesCol, {
-                    sender,
-                    text,
-                    createdAt: serverTimestamp()
-                });
+                const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
+                const docRef = await addDoc(messagesCol, { sender, text, createdAt: serverTimestamp() });
+                return docRef.id;
             } catch (error) {
                 console.error("Erro ao guardar mensagem:", error);
+                return null;
             }
         }
         
-        // ATUALIZAÇÃO: Lógica de escuta de mensagens refatorada para maior clareza e correção.
         function listenToMessages() {
             if (appState.unsubscribe) appState.unsubscribe();
-            
-            const messagesCol = collection(appState.db, `users/${appState.userId}/chats/${appState.chatId}/messages`);
+            const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                // Primeiro, verifica se o chat está completamente vazio. Isso só deve acontecer em um chat recém-criado.
-                if (snapshot.empty) {
-                    startConversation();
-                    return; // Sai da função para evitar processamento desnecessário
-                }
-                
-                // Se não estiver vazio, reconstrói a interface e o histórico de conversas a partir do zero.
-                // Isso garante que a interface sempre reflita o estado real do banco de dados.
-                elements.chatMessages.innerHTML = ''; 
+                // Lógica de renderização mais robusta: limpa e redesenha a partir da fonte da verdade (Firestore)
+                elements.chatMessages.innerHTML = '';
+                appState.renderedMessageIds.clear();
                 appState.conversationHistory = [];
-                
+
                 snapshot.docs.forEach(doc => {
                     const data = doc.data();
-                    addMessageToUI(data.sender, data.text);
+                    const messageId = doc.id;
+                    let textForUI = data.text;
+                    let textForHistory = data.text;
+
+                    // A IA salva um JSON, mas mostramos apenas o `responseText`
+                    if (data.sender === 'assistant') {
+                        try {
+                            const parsed = JSON.parse(data.text);
+                            textForUI = parsed.responseText || data.text;
+                        } catch (e) { /* Se não for JSON, usa o texto como está */ }
+                    }
+                    
+                    addMessageToUI(data.sender, textForUI, messageId);
                     appState.conversationHistory.push({
                         role: data.sender === 'user' ? 'user' : 'model',
-                        parts: [{ text: data.text }]
+                        parts: [{ text: textForHistory }]
                     });
                 });
 
+                if (snapshot.empty) { startConversation(); }
+                
             }, (error) => {
                 console.error("Erro ao ouvir mensagens:", error);
-                addMessageToUI('assistant', 'Não foi possível carregar o histórico. Por favor, atualize a página.');
-                // Se houver um erro na escuta, para o indicador de "pensando" para que o usuário não fique bloqueado.
+                addMessageToUI('assistant', 'Não foi possível carregar o histórico. Por favor, atualize a página.', 'error-load');
                 toggleThinking(false);
             });
         }
         
         async function createNewChat() {
             if (!appState.isAuthReady || !appState.db) return;
-            
             if (appState.unsubscribe) appState.unsubscribe();
-
             toggleThinking(true);
-            elements.chatMessages.innerHTML = '';
-            appState.conversationHistory = [];
-            appState.customerData = { name: '', moto: '', problem: '', preAnalysis: '' };
-            
             try {
-                const chatsCol = collection(appState.db, `users/${appState.userId}/chats`);
+                const chatsCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats`);
                 const newChatRef = await addDoc(chatsCol, { createdAt: serverTimestamp(), userId: appState.userId });
                 appState.chatId = newChatRef.id;
-                // A função listenToMessages irá agora lidar com o início da conversa quando detectar o chat vazio.
                 listenToMessages();
             } catch (error) {
                 console.error("Erro ao criar novo chat:", error);
@@ -365,100 +275,33 @@
             }
         }
         
-        // --- Funções da IA (Gemini) ---
-
-        async function callGeminiAPI(currentHistory) {
-             if (!apiKey) {
-                 throw new Error("A chave da API Gemini não foi definida.");
-            }
-            // Não envia a instrução do sistema no histórico, apenas no campo `systemInstruction`.
-            const historyForAPI = currentHistory.map(item => ({
-                role: item.role,
-                parts: item.parts
-            }));
-
-            const payload = {
-                contents: historyForAPI,
-                systemInstruction: {
-                    role: "system",
-                    parts: [{ text: systemPrompt }]
-                },
-                generationConfig: {
-                    maxOutputTokens: 800,
-                    temperature: 0.7,
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            "responseText": { "type": "STRING" },
-                            "conversationState": { "type": "STRING" },
-                            "extractedData": {
-                                type: "OBJECT",
-                                properties: {
-                                    "name": { "type": "STRING" },
-                                    "moto": { "type": "STRING" },
-                                    "problem": { "type": "STRING" }
-                                },
-                                required: ["name", "moto", "problem"]
-                            },
-                            "quickReplies": { "type": "ARRAY", "items": { "type": "STRING" } }
-                        },
-                        required: ["responseText", "conversationState", "extractedData", "quickReplies"]
-                    }
-                }
-            };
-
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        async function callBackendAPI(payload) {
+            const response = await fetch(config.backendApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
             if (!response.ok) {
                 const errorBody = await response.text();
-                throw new Error(`API call failed with status: ${response.status}. Body: ${errorBody}`);
+                throw new Error(`A chamada ao backend falhou com status: ${response.status}. Corpo: ${errorBody}`);
             }
             return response.json();
         }
 
         async function getDiagnosis() {
             toggleThinking(true);
-            const diagnosisPrompt = `
-                Baseado nos dados coletados, forneça um diagnóstico preliminar para o cliente.
-                CLIENTE: ${appState.customerData.name}
-                MOTO: ${appState.customerData.moto}
-                PROBLEMA: ${appState.customerData.problem}
-
-                Forneça 2 ou 3 causas mais comuns para o problema descrito, de forma clara e simples.
-                Seja breve e direto.
-                NÃO use NENHUM tipo de formatação, como markdown (negrito com **, itálico com *, etc). Responda em texto puro.
-                Ao final, inclua OBRIGATORIAMENTE este aviso: "Lembre-se, ${appState.customerData.name}, que esta é uma análise inicial. Para um diagnóstico preciso e seguro, o ideal é trazer sua ${appState.customerData.moto} para nossos mecânicos avaliarem aqui na oficina."
-            `;
+            const diagnosisPrompt = `Baseado nos dados coletados, forneça um diagnóstico preliminar para o cliente. CLIENTE: ${appState.customerData.name}, MOTO: ${appState.customerData.moto}, PROBLEMA: ${appState.customerData.problem}. Forneça 2 ou 3 causas comuns. NÃO use formatação. Ao final, inclua OBRIGATORIAMENTE este aviso: "Lembre-se, ${appState.customerData.name}, que esta é uma análise inicial. Para um diagnóstico preciso e seguro, o ideal é trazer sua ${appState.customerData.moto} para nossos mecânicos avaliarem aqui na oficina."`;
             
             try {
-                const payload = {
-                    contents: [{ role: 'user', parts: [{ text: diagnosisPrompt }] }]
-                };
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                 if (!response.ok) throw new Error("A API de diagnóstico falhou.");
-                const data = await response.json();
-                
-                if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    const diagnosisText = data.candidates[0].content.parts[0].text.trim();
-                    appState.customerData.preAnalysis = diagnosisText;
-                    await saveMessage('assistant', diagnosisText);
-                    setTimeout(generateWhatsAppLink, 1000);
-                } else {
-                    throw new Error('Resposta de diagnóstico inválida.');
-                }
+                const responseJson = await callBackendAPI({ history: [{ role: 'user', parts: [{ text: diagnosisPrompt }] }], systemPrompt });
+                const diagnosisText = responseJson.responseText.trim();
+                appState.customerData.preAnalysis = diagnosisText;
+                await saveMessage('assistant', JSON.stringify(responseJson));
+                setTimeout(generateWhatsAppLink, 500);
             } catch (error) {
-                console.error("Diagnosis Error:", error);
-                const errorMsg = 'Não consegui gerar um diagnóstico agora, mas não se preocupe. Vamos avançar para o atendimento com a nossa equipa.';
-                await saveMessage('assistant', errorMsg);
+                console.error("Erro no Diagnóstico:", error);
+                const errorMsg = { responseText: 'Não consegui gerar um diagnóstico agora, mas não se preocupe. Vamos avançar para o atendimento com a nossa equipa.' };
+                await saveMessage('assistant', JSON.stringify(errorMsg));
                 generateWhatsAppLink();
             }
         }
@@ -466,60 +309,32 @@
         async function generateWhatsAppLink() {
             const introText = "Olá! Vim através da assistente Centelha.";
             const summary = `\n\n*Resumo do Atendimento:*\n- *Cliente:* ${appState.customerData.name}\n- *Moto:* ${appState.customerData.moto}\n- *Problema:* ${appState.customerData.problem}`;
-            
-            const preAnalysisText = appState.customerData.preAnalysis;
-            const preAnalysisSection = preAnalysisText 
-                ? `\n\n*Pré-Análise da Centelha:*\n${preAnalysisText}`
-                : '';
-
-            const encodedText = encodeURIComponent(introText + summary + preAnalysisSection);
-            const whatsappUrl = `https://wa.me/5567999271603?text=${encodedText}`;
-            
-            const transferMessage = `Obrigado pelas informações! Para agilizar seu atendimento, preparei um resumo. Clique no botão abaixo para enviar a mensagem já pronta no seu WhatsApp e falar com a nossa equipa. [BUTTON:Falar com a Equipa|${whatsappUrl}]`;
-            
-            await saveMessage('assistant', transferMessage);
+            const preAnalysisSection = appState.customerData.preAnalysis ? `\n\n*Pré-Análise da Centelha:*\n${appState.customerData.preAnalysis}` : '';
+            const fullText = introText + summary + preAnalysisSection;
+            const encodedText = encodeURIComponent(fullText);
+            const whatsappUrl = `https://wa.me/${config.whatsappNumber}?text=${encodedText}`;
+            const transferMessage = { responseText: `Obrigado pelas informações! Para agilizar seu atendimento, preparei um resumo. Clique no botão para enviar no WhatsApp ou copie o texto. [BUTTON:Falar com a Equipa|${whatsappUrl}] [COPYBUTTON:Copiar Resumo|${fullText}]` };
+            await saveMessage('assistant', JSON.stringify(transferMessage));
             toggleThinking(false);
         }
 
-        // --- Lógica Principal da Conversa ---
-
         async function handleConversation() {
             toggleThinking(true);
-
+            renderQuickReplies([]);
             try {
-                const data = await callGeminiAPI(appState.conversationHistory);
-                
-                if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    let jsonResponse;
-                    try {
-                       jsonResponse = JSON.parse(data.candidates[0].content.parts[0].text);
-                    } catch (e) {
-                        console.error("Erro ao fazer parse do JSON da IA:", e, data.candidates[0].content.parts[0].text);
-                        throw new Error("A resposta da IA não é um JSON válido.");
-                    }
-
-                    appState.customerData = { ...appState.customerData, ...jsonResponse.extractedData };
-                    
-                    const assistantResponse = jsonResponse.responseText;
-                    await saveMessage('assistant', assistantResponse);
-                    
-                    renderQuickReplies(jsonResponse.quickReplies);
-
-                    const allDataCollected = appState.customerData.name && appState.customerData.moto && appState.customerData.problem;
-
-                    if (jsonResponse.conversationState === 'READY_FOR_DIAGNOSIS' || allDataCollected) {
-                        setTimeout(getDiagnosis, 500);
-                    } else {
-                        toggleThinking(false);
-                    }
-
+                const jsonResponse = await callBackendAPI({ history: appState.conversationHistory, systemPrompt });
+                appState.customerData = { ...appState.customerData, ...jsonResponse.extractedData };
+                await saveMessage('assistant', JSON.stringify(jsonResponse));
+                const allDataCollected = appState.customerData.name && appState.customerData.moto && appState.customerData.problem;
+                if (jsonResponse.conversationState === 'READY_FOR_DIAGNOSIS' || allDataCollected) {
+                    setTimeout(getDiagnosis, 500);
                 } else {
-                    throw new Error('Resposta da API inválida.');
+                    toggleThinking(false);
                 }
             } catch (error) {
-                console.error("Conversation Error:", error);
-                const errorMsg = "Desculpe, tive um pequeno curto-circuito aqui. Poderia repetir a sua última mensagem, por favor?";
-                await saveMessage('assistant', errorMsg);
+                console.error("Erro na Conversa:", error);
+                const errorMsg = { responseText: "Desculpe, tive um pequeno curto-circuito aqui. Poderia repetir a sua última mensagem, por favor?" };
+                await saveMessage('assistant', JSON.stringify(errorMsg));
                 toggleThinking(false);
             }
         }
@@ -527,49 +342,48 @@
         async function handleSend() {
             const userInput = elements.chatInput.value.trim();
             if (userInput === '' || appState.isThinking) return;
-            
-            const tempUserInput = userInput;
             elements.chatInput.value = '';
-            renderQuickReplies([]);
-            
-            await saveMessage('user', tempUserInput);
-            // A chamada para handleConversation agora não precisa do input, pois o histórico já foi atualizado pelo listener.
+            await saveMessage('user', userInput);
             await handleConversation();
         }
         
         async function startConversation() {
-             const welcomeMessage = "Olá! Sou a Centelha, a sua assistente da Oficina FG Motos. Para começarmos, qual é o seu nome?";
-             // Salva a mensagem primeiro, o listener irá renderizá-la
-             await saveMessage('assistant', welcomeMessage);
-             renderQuickReplies(["Meu nome é...", "Queria saber o endereço"]);
-             toggleThinking(false);
-         }
+            const welcomeMessage = {
+                responseText: "Olá! Sou a Centelha, a sua assistente da Oficina FG Motos. Para começarmos, qual é o seu nome?",
+                quickReplies: ["Meu nome é...", "Queria saber o endereço"]
+            };
+            await saveMessage('assistant', JSON.stringify(welcomeMessage));
+            toggleThinking(false);
+        }
 
-        // --- Inicialização e Event Listeners ---
-
-        async function startApp() {
-            lucide.createIcons();
-            
+        function attachEventListeners() {
             elements.sendBtn.addEventListener('click', handleSend);
             elements.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } });
-            elements.newChatBtn.addEventListener('click', () => {
-                showModal("Tem a certeza de que deseja iniciar uma nova conversa?", createNewChat);
-            });
+            elements.newChatBtn.addEventListener('click', () => { showModal("Tem a certeza de que deseja iniciar uma nova conversa?", createNewChat); });
             elements.modal.cancelBtn.addEventListener('click', hideModal);
-            
+            elements.chatMessages.addEventListener('click', (e) => {
+                const target = e.target.closest('button[data-copytext]');
+                if (target) {
+                    navigator.clipboard.writeText(target.dataset.copytext).then(() => {
+                        target.textContent = 'Copiado!';
+                        setTimeout(() => { target.textContent = 'Copiar Resumo'; }, 2000);
+                    });
+                }
+            });
+        }
+        
+        async function startApp() {
+            lucide.createIcons();
+            attachEventListeners();
+            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
             if (!firebaseConfig || !firebaseConfig.projectId) {
-                console.error("Configuração do Firebase ausente ou inválida.");
-                addMessageToUI('assistant', 'Aviso: A configuração do Firebase está em falta. O chat não pode funcionar.');
-                toggleThinking(true);
+                addMessageToUI('assistant', 'Aviso: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
                 return;
             }
-            
             try {
-                setLogLevel('error');
                 const app = initializeApp(firebaseConfig);
                 appState.db = getFirestore(app);
                 appState.auth = getAuth(app);
-                
                 onAuthStateChanged(appState.auth, async (user) => {
                     if (user && !appState.isAuthReady) { 
                         appState.userId = user.uid;
@@ -577,20 +391,16 @@
                         await createNewChat();
                     }
                 });
-
-                await signInAnonymously(appState.auth);
-
-            } catch (error) {
-                console.error("Falha na inicialização do Firebase ou Autenticação:", error);
-                if (error.code === 'auth/configuration-not-found') {
-                    addMessageToUI('assistant', '<b>Erro de Configuração:</b> O método de login "Anónimo" precisa ser ativado no seu projeto Firebase. <br><br> 1. Vá para o seu <b>Console do Firebase</b>. <br> 2. Clique em <b>Authentication</b>. <br> 3. Vá para a aba <b>Sign-in method</b>. <br> 4. Ative o provedor <b>Anónimo</b>.');
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(appState.auth, __initial_auth_token);
                 } else {
-                    addMessageToUI('assistant', 'Erro de ligação com os nossos sistemas. Por favor, recarregue a página.');
+                    await signInAnonymously(appState.auth);
                 }
-                toggleThinking(true); 
+            } catch (error) {
+                console.error("Falha na inicialização do Firebase:", error);
+                addMessageToUI('assistant', 'Erro de ligação com os nossos sistemas. Por favor, recarregue a página.', `err-firebase-init`);
             }
         }
-
         window.onload = startApp;
     </script>
 </body>
