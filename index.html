@@ -162,7 +162,8 @@
             chatId: null,
             isThinking: false,
             conversationHistory: [],
-            customerData: { name: '', moto: '', problem: '' },
+            // ATUALIZAÇÃO: Adicionado 'preAnalysis' para guardar o diagnóstico
+            customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
             db: null,
             auth: null,
             unsubscribe: null, 
@@ -222,6 +223,9 @@
                     </div>`;
                 elements.chatMessages.insertAdjacentHTML('beforeend', indicatorHTML);
                 scrollToBottom();
+            } else {
+                // ATUALIZAÇÃO: Foca automaticamente no input quando a IA termina de responder.
+                elements.chatInput.focus();
             }
         }
         
@@ -236,7 +240,7 @@
             let sanitizedText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
             const textWithButtons = sanitizedText.replace(buttonRegex, (match, buttonText, url) => {
-                 return `<a href="${url}" target="_blank" class="chat-button block text-center mt-3 bg-gradient-to-br from-yellow-400 to-orange-500 text-white font-bold py-2.5 px-4 rounded-full hover:opacity-90 transition-opacity no-underline">${buttonText}</a>`;
+                return `<a href="${url}" target="_blank" class="chat-button block text-center mt-3 bg-gradient-to-br from-yellow-400 to-orange-500 text-white font-bold py-2.5 px-4 rounded-full hover:opacity-90 transition-opacity no-underline">${buttonText}</a>`;
             });
 
             const messageBubble = sender === 'user'
@@ -312,8 +316,6 @@
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                // Apenas renderiza as mensagens se houver mudanças.
-                // O estado da UI é limpo antes em createNewChat.
                 if (snapshot.docChanges().length > 0) {
                      elements.chatMessages.innerHTML = ''; 
                     appState.conversationHistory = [];
@@ -339,13 +341,13 @@
         async function createNewChat() {
             if (!appState.isAuthReady || !appState.db) return;
             
-            // Cancela a escuta da conversa anterior, se houver
             if (appState.unsubscribe) appState.unsubscribe();
 
             toggleThinking(true);
             elements.chatMessages.innerHTML = '';
             appState.conversationHistory = [];
-            appState.customerData = { name: '', moto: '', problem: '' };
+            // ATUALIZAÇÃO: Reseta todos os dados do cliente, incluindo a pré-análise
+            appState.customerData = { name: '', moto: '', problem: '', preAnalysis: '' };
             
             try {
                 const chatsCol = collection(appState.db, `users/${appState.userId}/chats`);
@@ -362,7 +364,7 @@
 
         async function callGeminiAPI(currentHistory) {
              if (!apiKey) {
-                throw new Error("A chave da API Gemini não foi definida.");
+                 throw new Error("A chave da API Gemini não foi definida.");
             }
             const historyWithoutSystemPrompt = currentHistory.slice(1);
 
@@ -391,7 +393,7 @@
                                     "moto": { "type": "STRING" },
                                     "problem": { "type": "STRING" }
                                 },
-                                 required: ["name", "moto", "problem"]
+                                required: ["name", "moto", "problem"]
                             },
                             "quickReplies": { "type": "ARRAY", "items": { "type": "STRING" } }
                         },
@@ -441,6 +443,8 @@
                 
                 if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
                     const diagnosisText = data.candidates[0].content.parts[0].text.trim();
+                    // ATUALIZAÇÃO: Armazena o texto do diagnóstico no estado da aplicação.
+                    appState.customerData.preAnalysis = diagnosisText;
                     await saveMessage('assistant', diagnosisText);
                     setTimeout(generateWhatsAppLink, 1000);
                 } else {
@@ -457,7 +461,14 @@
         async function generateWhatsAppLink() {
             const introText = "Olá! Vim através da assistente Centelha.";
             const summary = `\n\n*Resumo do Atendimento:*\n- *Cliente:* ${appState.customerData.name}\n- *Moto:* ${appState.customerData.moto}\n- *Problema:* ${appState.customerData.problem}`;
-            const encodedText = encodeURIComponent(introText + summary);
+            
+            // ATUALIZAÇÃO: Adiciona a seção de pré-análise se ela existir.
+            const preAnalysisText = appState.customerData.preAnalysis;
+            const preAnalysisSection = preAnalysisText 
+                ? `\n\n*Pré-Análise da Centelha:*\n${preAnalysisText}`
+                : '';
+
+            const encodedText = encodeURIComponent(introText + summary + preAnalysisSection);
             const whatsappUrl = `https://wa.me/5567999271603?text=${encodedText}`;
             
             const transferMessage = `Obrigado pelas informações! Para agilizar seu atendimento, preparei um resumo. Clique no botão abaixo para enviar a mensagem já pronta no seu WhatsApp e falar com a nossa equipa. [BUTTON:Falar com a Equipa|${whatsappUrl}]`;
@@ -563,7 +574,6 @@
                     if (user && !appState.isAuthReady) { 
                         appState.userId = user.uid;
                         appState.isAuthReady = true;
-                        // A cada novo login (ou seja, a cada nova visita), cria um chat novo.
                         await createNewChat();
                     }
                 });
