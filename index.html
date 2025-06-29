@@ -129,8 +129,7 @@
         let appState = {
             isAuthReady: false, userId: null, chatId: null, isThinking: false,
             conversationHistory: [], customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
-            db: null, auth: null, unsubscribe: null, 
-            // CORREÇÃO: Usa a variável de ambiente __app_id quando disponível
+            db: null, auth: null, unsubscribe: null,    
             appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
             renderedMessageIds: new Set()
         };
@@ -207,10 +206,10 @@
             elements.modal.container.classList.remove('flex');
         }
         
-        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         async function saveMessage(sender, text) {
             if (!appState.isAuthReady || !appState.chatId || !appState.db) return null;
             try {
+                // O caminho do Firestore está correto para as regras de segurança.
                 const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
                 const docRef = await addDoc(messagesCol, { sender, text, createdAt: serverTimestamp() });
                 return docRef.id;
@@ -220,7 +219,6 @@
             }
         }
         
-        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         function listenToMessages() {
             if (appState.unsubscribe) appState.unsubscribe();
             const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
@@ -242,7 +240,7 @@
                             const parsed = JSON.parse(data.text);
                             textForUI = parsed.responseText || data.text;
                             textForHistory = JSON.stringify(parsed);
-                        } catch (e) { /* Ignore */ }
+                        } catch (e) { /* Ignorar se não for JSON válido */ }
                     }
                     
                     addMessageToUI(data.sender, textForUI, messageId);
@@ -276,7 +274,6 @@
             });
         }
         
-        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         async function createNewChat() {
             if (!appState.isAuthReady || !appState.db) return;
             if (appState.unsubscribe) appState.unsubscribe();
@@ -397,36 +394,37 @@
             lucide.createIcons();
             attachEventListeners();
             
+            // --- Configuração Segura do Firebase ---
+            // As chaves de configuração hardcoded foram removidas.
+            // A aplicação agora utiliza as variáveis de ambiente (__firebase_config)
+            // que são injetadas de forma segura pelo ambiente de execução.
             let firebaseConfig;
-            try {
-                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                try {
                     firebaseConfig = JSON.parse(__firebase_config);
-                } else {
-                    throw new Error("Variável de ambiente __firebase_config não encontrada. Usando fallback.");
+                } catch(e) {
+                    console.error("Erro ao analisar a configuração do Firebase fornecida pelo ambiente.", e);
+                    addMessageToUI('assistant', 'Erro Crítico: A configuração do servidor é inválida.', 'err-config');
+                    return;
                 }
-            } catch (e) {
-                console.log(e.message);
-                firebaseConfig = {
-                    apiKey: "AIzaSyBYSzG5XKIvCa1iFVOjALdooVSf1HsyeJ8",
-                    authDomain: "centelha-e931b.firebaseapp.com",
-                    projectId: "centelha-e931b",
-                    storageBucket: "centelha-e931b.appspot.com",
-                    messagingSenderId: "639426563285",
-                    appId: "1:639426563285:web:676bc24c3f32475478a65c",
-                    measurementId: "G-BR4P0XVTPB"
-                };
+            } else {
+                console.error("Configuração do Firebase não encontrada. As chaves devem ser injetadas pelo ambiente.");
+                addMessageToUI('assistant', 'Erro Crítico: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
+                return; // Interrompe a execução se a configuração não estiver disponível.
             }
 
-            if (!firebaseConfig || !firebaseConfig.projectId) {
-                addMessageToUI('assistant', 'Aviso: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
+            if (!firebaseConfig.projectId) {
+                addMessageToUI('assistant', 'Aviso: A configuração do servidor está incompleta. O chat não pode funcionar.', 'err-config');
                 return;
             }
+
             try {
                 const app = initializeApp(firebaseConfig);
                 appState.db = getFirestore(app);
                 appState.auth = getAuth(app);
+
                 onAuthStateChanged(appState.auth, async (user) => {
-                    if (user && !appState.isAuthReady) { 
+                    if (user && !appState.isAuthReady) {    
                         appState.userId = user.uid;
                         appState.isAuthReady = true;
                         await createNewChat();
@@ -434,15 +432,15 @@
                 });
                 
                 let initialToken = null;
-                try {
-                    if (typeof __initial_auth_token !== 'undefined') {
-                        initialToken = __initial_auth_token;
-                    }
-                } catch (e) { /* Ignora */ }
+                // Verifica de forma segura se o token inicial existe
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    initialToken = __initial_auth_token;
+                }
                 
                 if (initialToken) {
                     await signInWithCustomToken(appState.auth, initialToken);
                 } else {
+                    // Como fallback, realiza login anônimo se nenhum token for fornecido
                     await signInAnonymously(appState.auth);
                 }
             } catch (error) {
