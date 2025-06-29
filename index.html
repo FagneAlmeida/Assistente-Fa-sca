@@ -14,7 +14,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide-react@0.378.0/dist/lucide.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.378.0/dist/umd/lucide.min.js"></script>
 
     <style>
         /* Estilização base com um tema mais sofisticado */
@@ -538,7 +538,7 @@
 
         // --- Inicialização e Event Listeners ---
 
-        async function startApp() { // <-- RENOMEADO AQUI
+        async function startApp() {
             lucide.createIcons(); // Inicializa os ícones
             
             elements.sendBtn.addEventListener('click', handleSend);
@@ -552,7 +552,7 @@
             
             try {
                 setLogLevel('error');
-                const app = initializeApp(firebaseConfig); // <-- Uso da função importada
+                const app = initializeApp(firebaseConfig);
                 appState.db = getFirestore(app);
                 appState.auth = getAuth(app);
                 
@@ -577,7 +577,7 @@
             }
         }
 
-        window.onload = startApp; // <-- ATUALIZADO AQUI
+        window.onload = startApp;
     </script>
 </body>
 </html>
