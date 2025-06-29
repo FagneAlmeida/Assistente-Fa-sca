@@ -114,7 +114,6 @@
         // --- Configuração da Aplicação ---
         const config = {
             whatsappNumber: "5567999271603",
-            // A URL DA SUA CLOUD FUNCTION!
             backendApiUrl: "https://callgemini-g3vol52jhq-uc.a.run.app"
         };
         
@@ -131,6 +130,7 @@
             isAuthReady: false, userId: null, chatId: null, isThinking: false,
             conversationHistory: [], customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
             db: null, auth: null, unsubscribe: null, 
+            // CORREÇÃO: Usa a variável de ambiente __app_id quando disponível
             appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
             renderedMessageIds: new Set()
         };
@@ -207,6 +207,7 @@
             elements.modal.container.classList.remove('flex');
         }
         
+        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         async function saveMessage(sender, text) {
             if (!appState.isAuthReady || !appState.chatId || !appState.db) return null;
             try {
@@ -219,14 +220,13 @@
             }
         }
         
-        // CORREÇÃO: Lógica do listener refeita para orquestrar a conversa e evitar a condição de corrida.
+        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         function listenToMessages() {
             if (appState.unsubscribe) appState.unsubscribe();
             const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                // Limpa e redesenha a UI e o estado a partir do Firestore (fonte da verdade)
                 elements.chatMessages.innerHTML = '';
                 appState.renderedMessageIds.clear();
                 appState.conversationHistory = [];
@@ -237,13 +237,12 @@
                     let textForUI = data.text;
                     let textForHistory = data.text;
 
-                    // A IA salva um JSON, mas mostramos apenas o `responseText` na UI
                     if (data.sender === 'assistant') {
                         try {
                             const parsed = JSON.parse(data.text);
                             textForUI = parsed.responseText || data.text;
-                            textForHistory = JSON.stringify(parsed); // Mantém o JSON completo para o histórico
-                        } catch (e) { /* Se não for JSON, usa o texto como está */ }
+                            textForHistory = JSON.stringify(parsed);
+                        } catch (e) { /* Ignore */ }
                     }
                     
                     addMessageToUI(data.sender, textForUI, messageId);
@@ -258,12 +257,10 @@
                     return;
                 }
 
-                // Verifica se a IA precisa responder
                 const lastMessage = appState.conversationHistory[appState.conversationHistory.length - 1];
                 if (lastMessage && lastMessage.role === 'user' && !appState.isThinking) {
                     handleConversation();
                 } else if (lastMessage && lastMessage.role === 'model') {
-                    // Se a última mensagem é da IA, para de pensar e mostra as respostas rápidas
                     toggleThinking(false);
                     try {
                         const lastResponse = JSON.parse(lastMessage.parts[0].text);
@@ -279,18 +276,18 @@
             });
         }
         
+        // CORREÇÃO: O caminho do Firestore foi ajustado para seguir as regras de segurança.
         async function createNewChat() {
             if (!appState.isAuthReady || !appState.db) return;
             if (appState.unsubscribe) appState.unsubscribe();
             toggleThinking(true);
-            // Limpa o estado local. A função listenToMessages irá preenchê-lo.
             appState.conversationHistory = [];
             appState.customerData = { name: '', moto: '', problem: '', preAnalysis: '' };
             try {
                 const chatsCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats`);
                 const newChatRef = await addDoc(chatsCol, { createdAt: serverTimestamp(), userId: appState.userId });
                 appState.chatId = newChatRef.id;
-                listenToMessages(); // O listener vai detectar o chat vazio e iniciar a conversa
+                listenToMessages();
             } catch (error) {
                 console.error("Erro ao criar novo chat:", error);
                 toggleThinking(false);
@@ -317,7 +314,6 @@
             try {
                 const responseJson = await callBackendAPI({ history: [{ role: 'user', parts: [{ text: diagnosisPrompt }] }], systemPrompt });
                 appState.customerData.preAnalysis = responseJson.responseText.trim();
-                // Salva a resposta do diagnóstico. O listener vai renderizar e parar o "thinking".
                 await saveMessage('assistant', JSON.stringify(responseJson));
                 setTimeout(generateWhatsAppLink, 500);
             } catch (error) {
@@ -336,23 +332,19 @@
             const encodedText = encodeURIComponent(fullText);
             const whatsappUrl = `https://wa.me/${config.whatsappNumber}?text=${encodedText}`;
             const transferMessage = { responseText: `Obrigado pelas informações! Para agilizar seu atendimento, preparei um resumo. Clique no botão para enviar no WhatsApp ou copie o texto. [BUTTON:Falar com a Equipa|${whatsappUrl}] [COPYBUTTON:Copiar Resumo|${fullText}]` };
-            // Salva a mensagem final. O listener vai renderizá-la.
             await saveMessage('assistant', JSON.stringify(transferMessage));
         }
 
-        // CORREÇÃO: Função chamada pelo listener, usa o estado atual já sincronizado.
         async function handleConversation() {
             toggleThinking(true);
             renderQuickReplies([]);
             try {
-                // A história já está atualizada pelo listener, então a chamada é segura.
                 if (appState.conversationHistory.length === 0) {
                      throw new Error("Tentativa de chamar a IA com histórico vazio.");
                 }
                 const jsonResponse = await callBackendAPI({ history: appState.conversationHistory, systemPrompt });
                 appState.customerData = { ...appState.customerData, ...jsonResponse.extractedData };
                 
-                // Salva a resposta da IA. O listener vai renderizar e decidir o próximo passo.
                 await saveMessage('assistant', JSON.stringify(jsonResponse));
                 
                 const allDataCollected = appState.customerData.name && appState.customerData.moto && appState.customerData.problem;
@@ -366,7 +358,6 @@
             }
         }
         
-        // CORREÇÃO: Função simplificada. Apenas salva a mensagem do usuário.
         async function handleSend() {
             const userInput = elements.chatInput.value.trim();
             if (userInput === '' || appState.isThinking) return;
@@ -374,19 +365,15 @@
             const textToSave = userInput;
             elements.chatInput.value = '';
             renderQuickReplies([]);
-
-            // Apenas salva a mensagem do usuário. O listener `listenToMessages`
-            // vai detectar essa nova mensagem e chamar `handleConversation`.
+            
             await saveMessage('user', textToSave);
         }
         
-        // CORREÇÃO: Função simplificada. Apenas salva a mensagem inicial.
         async function startConversation() {
             const welcomeMessage = {
                 responseText: "Olá! Sou a Centelha, a sua assistente da Oficina FG Motos. Para começarmos, qual é o seu nome?",
                 quickReplies: ["Meu nome é...", "Queria saber o endereço"]
             };
-            // Salva a mensagem de boas-vindas. O listener vai renderizá-la.
             await saveMessage('assistant', JSON.stringify(welcomeMessage));
         }
 
@@ -409,7 +396,27 @@
         async function startApp() {
             lucide.createIcons();
             attachEventListeners();
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+            
+            let firebaseConfig;
+            try {
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    firebaseConfig = JSON.parse(__firebase_config);
+                } else {
+                    throw new Error("Variável de ambiente __firebase_config não encontrada. Usando fallback.");
+                }
+            } catch (e) {
+                console.log(e.message);
+                firebaseConfig = {
+                    apiKey: "AIzaSyBYSzG5XKIvCa1iFVOjALdooVSf1HsyeJ8",
+                    authDomain: "centelha-e931b.firebaseapp.com",
+                    projectId: "centelha-e931b",
+                    storageBucket: "centelha-e931b.appspot.com",
+                    messagingSenderId: "639426563285",
+                    appId: "1:639426563285:web:676bc24c3f32475478a65c",
+                    measurementId: "G-BR4P0XVTPB"
+                };
+            }
+
             if (!firebaseConfig || !firebaseConfig.projectId) {
                 addMessageToUI('assistant', 'Aviso: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
                 return;
@@ -425,8 +432,16 @@
                         await createNewChat();
                     }
                 });
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(appState.auth, __initial_auth_token);
+                
+                let initialToken = null;
+                try {
+                    if (typeof __initial_auth_token !== 'undefined') {
+                        initialToken = __initial_auth_token;
+                    }
+                } catch (e) { /* Ignora */ }
+                
+                if (initialToken) {
+                    await signInWithCustomToken(appState.auth, initialToken);
                 } else {
                     await signInAnonymously(appState.auth);
                 }
