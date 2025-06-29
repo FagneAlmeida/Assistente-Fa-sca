@@ -121,7 +121,7 @@
 
         // Cérebro da Centelha: Instruções para a IA
         const systemPrompt = `
-        Voce e a Centelha, a assistente virtual da "Oficina FG Motos". Sua personalidade e extremamente amigavel, paciente e prestativa. NUNCA soe rude ou acusatoria.
+        Voce e a Centelha, a assistente virtual da "Oficina FG Motos". Sua personalidade e amigavel, confiavel e prestativa.
         Seu objetivo e dar um diagnostico preliminar baseado no problema da moto do cliente.
         NUNCA use formatacao markdown, como asteriscos ou hashtags. Mantenha o texto limpo e direto.
         
@@ -245,8 +245,7 @@
         async function isValidName(name) {
             if (name.split(' ').length > 5 || /\d/.test(name)) return false; // Filtro rápido inicial
 
-            // --- MELHORIA --- Prompt mais flexível para reconhecer variações de nomes.
-            const validationPrompt = `Analise o texto a seguir: "${name}". Ele se parece com um nome de pessoa, considerando nomes comuns, apelidos, nomes incomuns como 'Fagne' ou mesmo nomes com pequenos erros de digitação (como 'jovana' em vez de 'Joana')? Responda apenas "SIM" ou "NAO".`;
+            const validationPrompt = `A frase a seguir é um nome próprio de uma pessoa ou um apelido comum? Responda apenas "SIM" ou "NAO". Frase: "${name}"`;
             try {
                 const data = await callGeminiAPI(validationPrompt, 5); // Poucos tokens, resposta rápida
                 if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
@@ -325,8 +324,7 @@
                         conversationState = 'ASKING_MOTO';
                         addMessage('assistant', `Prazer, ${customerData.name}! Agora, por favor, me diga a marca e o modelo da sua moto. (Ex: Honda Biz 125, Yamaha Fazer 250)`);
                     } else {
-                        // --- MELHORIA --- Mensagem mais amigável e menos ofensiva.
-                        addMessage('assistant', 'Hmm, não tenho certeza se entendi seu nome corretamente. Para garantir um atendimento mais próximo, você poderia digitá-lo novamente, por favor? 😊');
+                        addMessage('assistant', 'Desculpe, não entendi isso como um nome. Para um atendimento mais pessoal, você poderia me informar apenas o seu nome, por favor? 😊');
                     }
                     break;
                 case 'ASKING_MOTO':
