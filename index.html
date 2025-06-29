@@ -312,14 +312,11 @@
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                if (snapshot.docChanges().length === 0 && !snapshot.empty) return;
-                
-                elements.chatMessages.innerHTML = ''; 
-                appState.conversationHistory = [];
-                
-                if (snapshot.empty) {
-                    startConversation();
-                } else {
+                // Apenas renderiza as mensagens se houver mudanças.
+                // O estado da UI é limpo antes em createNewChat.
+                if (snapshot.docChanges().length > 0) {
+                     elements.chatMessages.innerHTML = ''; 
+                    appState.conversationHistory = [];
                     snapshot.docs.forEach(doc => {
                         const data = doc.data();
                         addMessageToUI(data.sender, data.text);
@@ -328,6 +325,8 @@
                             parts: [{ text: data.text }]
                         });
                     });
+                } else if (snapshot.empty) {
+                    startConversation();
                 }
                  toggleThinking(false);
             }, (error) => {
@@ -340,6 +339,9 @@
         async function createNewChat() {
             if (!appState.isAuthReady || !appState.db) return;
             
+            // Cancela a escuta da conversa anterior, se houver
+            if (appState.unsubscribe) appState.unsubscribe();
+
             toggleThinking(true);
             elements.chatMessages.innerHTML = '';
             appState.conversationHistory = [];
@@ -355,57 +357,7 @@
                 toggleThinking(false);
             }
         }
-
-        async function findOrCreateChat() {
-            if (!appState.isAuthReady || !appState.db) return;
-            toggleThinking(true);
-            const chatsCol = collection(appState.db, `users/${appState.userId}/chats`);
-            const q = query(chatsCol, orderBy("createdAt", "desc"));
-            
-            try {
-                const querySnapshot = await getDocs(q);
-                if (querySnapshot.empty) {
-                    await createNewChat();
-                } else {
-                    appState.chatId = querySnapshot.docs[0].id;
-                    listenToMessages();
-                }
-            } catch(error) {
-                 console.error("Erro ao procurar chat:", error);
-                 addMessageToUI('assistant', 'Erro ao carregar a sua conversa. A tentar novamente.');
-                 toggleThinking(false);
-            }
-        }
         
-        async function clearChatHistory() {
-             if (!appState.isAuthReady || !appState.chatId || !appState.db) {
-                elements.chatMessages.innerHTML = '';
-                appState.conversationHistory = [];
-                startConversation();
-                return;
-             }
-            toggleThinking(true);
-            if (appState.unsubscribe) appState.unsubscribe();
-            
-            try {
-                const messagesCol = collection(appState.db, `users/${appState.userId}/chats/${appState.chatId}/messages`);
-                const snapshot = await getDocs(messagesCol);
-                const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-                await Promise.all(deletePromises);
-                
-                const chatDoc = doc(appState.db, `users/${appState.userId}/chats`, appState.chatId);
-                await deleteDoc(chatDoc);
-                
-                appState.chatId = null;
-                await createNewChat();
-
-            } catch (error) {
-                console.error("Erro ao limpar histórico:", error);
-                addMessageToUI('assistant', 'Ocorreu um erro ao limpar a conversa. Por favor, tente novamente.');
-                toggleThinking(false);
-            }
-         }
-
         // --- Funções da IA (Gemini) ---
 
         async function callGeminiAPI(currentHistory) {
@@ -590,7 +542,7 @@
             elements.sendBtn.addEventListener('click', handleSend);
             elements.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } });
             elements.newChatBtn.addEventListener('click', () => {
-                showModal("Tem a certeza de que deseja apagar esta conversa e começar uma nova?", clearChatHistory);
+                showModal("Tem a certeza de que deseja iniciar uma nova conversa?", createNewChat);
             });
             elements.modal.cancelBtn.addEventListener('click', hideModal);
             
@@ -611,7 +563,8 @@
                     if (user && !appState.isAuthReady) { 
                         appState.userId = user.uid;
                         appState.isAuthReady = true;
-                        await findOrCreateChat();
+                        // A cada novo login (ou seja, a cada nova visita), cria um chat novo.
+                        await createNewChat();
                     }
                 });
 
