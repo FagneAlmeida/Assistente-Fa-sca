@@ -162,7 +162,6 @@
             chatId: null,
             isThinking: false,
             conversationHistory: [],
-            // ATUALIZAÇÃO: Adicionado 'preAnalysis' para guardar o diagnóstico
             customerData: { name: '', moto: '', problem: '', preAnalysis: '' },
             db: null,
             auth: null,
@@ -224,7 +223,6 @@
                 elements.chatMessages.insertAdjacentHTML('beforeend', indicatorHTML);
                 scrollToBottom();
             } else {
-                // ATUALIZAÇÃO: Foca automaticamente no input quando a IA termina de responder.
                 elements.chatInput.focus();
             }
         }
@@ -309,6 +307,7 @@
             }
         }
         
+        // ATUALIZAÇÃO: Lógica de escuta de mensagens refatorada para maior clareza e correção.
         function listenToMessages() {
             if (appState.unsubscribe) appState.unsubscribe();
             
@@ -316,25 +315,31 @@
             const q = query(messagesCol, orderBy("createdAt"));
 
             appState.unsubscribe = onSnapshot(q, (snapshot) => {
-                if (snapshot.docChanges().length > 0) {
-                     elements.chatMessages.innerHTML = ''; 
-                    appState.conversationHistory = [];
-                    snapshot.docs.forEach(doc => {
-                        const data = doc.data();
-                        addMessageToUI(data.sender, data.text);
-                        appState.conversationHistory.push({
-                            role: data.sender === 'user' ? 'user' : 'model',
-                            parts: [{ text: data.text }]
-                        });
-                    });
-                } else if (snapshot.empty) {
+                // Primeiro, verifica se o chat está completamente vazio. Isso só deve acontecer em um chat recém-criado.
+                if (snapshot.empty) {
                     startConversation();
+                    return; // Sai da função para evitar processamento desnecessário
                 }
-                 toggleThinking(false);
+                
+                // Se não estiver vazio, reconstrói a interface e o histórico de conversas a partir do zero.
+                // Isso garante que a interface sempre reflita o estado real do banco de dados.
+                elements.chatMessages.innerHTML = ''; 
+                appState.conversationHistory = [];
+                
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    addMessageToUI(data.sender, data.text);
+                    appState.conversationHistory.push({
+                        role: data.sender === 'user' ? 'user' : 'model',
+                        parts: [{ text: data.text }]
+                    });
+                });
+
             }, (error) => {
                 console.error("Erro ao ouvir mensagens:", error);
                 addMessageToUI('assistant', 'Não foi possível carregar o histórico. Por favor, atualize a página.');
-                 toggleThinking(false);
+                // Se houver um erro na escuta, para o indicador de "pensando" para que o usuário não fique bloqueado.
+                toggleThinking(false);
             });
         }
         
@@ -346,13 +351,13 @@
             toggleThinking(true);
             elements.chatMessages.innerHTML = '';
             appState.conversationHistory = [];
-            // ATUALIZAÇÃO: Reseta todos os dados do cliente, incluindo a pré-análise
             appState.customerData = { name: '', moto: '', problem: '', preAnalysis: '' };
             
             try {
                 const chatsCol = collection(appState.db, `users/${appState.userId}/chats`);
                 const newChatRef = await addDoc(chatsCol, { createdAt: serverTimestamp(), userId: appState.userId });
                 appState.chatId = newChatRef.id;
+                // A função listenToMessages irá agora lidar com o início da conversa quando detectar o chat vazio.
                 listenToMessages();
             } catch (error) {
                 console.error("Erro ao criar novo chat:", error);
@@ -366,13 +371,14 @@
              if (!apiKey) {
                  throw new Error("A chave da API Gemini não foi definida.");
             }
-            const historyWithoutSystemPrompt = currentHistory.slice(1);
+            // Não envia a instrução do sistema no histórico, apenas no campo `systemInstruction`.
+            const historyForAPI = currentHistory.map(item => ({
+                role: item.role,
+                parts: item.parts
+            }));
 
             const payload = {
-                contents: [
-                    { role: "model", parts: [{ text: "Ok, entendi as regras." }] },
-                    ...historyWithoutSystemPrompt
-                ],
+                contents: historyForAPI,
                 systemInstruction: {
                     role: "system",
                     parts: [{ text: systemPrompt }]
@@ -443,7 +449,6 @@
                 
                 if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
                     const diagnosisText = data.candidates[0].content.parts[0].text.trim();
-                    // ATUALIZAÇÃO: Armazena o texto do diagnóstico no estado da aplicação.
                     appState.customerData.preAnalysis = diagnosisText;
                     await saveMessage('assistant', diagnosisText);
                     setTimeout(generateWhatsAppLink, 1000);
@@ -462,7 +467,6 @@
             const introText = "Olá! Vim através da assistente Centelha.";
             const summary = `\n\n*Resumo do Atendimento:*\n- *Cliente:* ${appState.customerData.name}\n- *Moto:* ${appState.customerData.moto}\n- *Problema:* ${appState.customerData.problem}`;
             
-            // ATUALIZAÇÃO: Adiciona a seção de pré-análise se ela existir.
             const preAnalysisText = appState.customerData.preAnalysis;
             const preAnalysisSection = preAnalysisText 
                 ? `\n\n*Pré-Análise da Centelha:*\n${preAnalysisText}`
@@ -479,7 +483,7 @@
 
         // --- Lógica Principal da Conversa ---
 
-        async function handleConversation(userInput) {
+        async function handleConversation() {
             toggleThinking(true);
 
             try {
@@ -490,7 +494,7 @@
                     try {
                        jsonResponse = JSON.parse(data.candidates[0].content.parts[0].text);
                     } catch (e) {
-                        console.error("Erro ao fazer parse do JSON da IA:", e);
+                        console.error("Erro ao fazer parse do JSON da IA:", e, data.candidates[0].content.parts[0].text);
                         throw new Error("A resposta da IA não é um JSON válido.");
                     }
 
@@ -498,8 +502,7 @@
                     
                     const assistantResponse = jsonResponse.responseText;
                     await saveMessage('assistant', assistantResponse);
-                    appState.conversationHistory.push({ role: 'model', parts: [{ text: JSON.stringify(jsonResponse) }] });
-
+                    
                     renderQuickReplies(jsonResponse.quickReplies);
 
                     const allDataCollected = appState.customerData.name && appState.customerData.moto && appState.customerData.problem;
@@ -516,8 +519,7 @@
             } catch (error) {
                 console.error("Conversation Error:", error);
                 const errorMsg = "Desculpe, tive um pequeno curto-circuito aqui. Poderia repetir a sua última mensagem, por favor?";
-                addMessageToUI('assistant', errorMsg);
-                appState.conversationHistory.pop(); 
+                await saveMessage('assistant', errorMsg);
                 toggleThinking(false);
             }
         }
@@ -525,23 +527,21 @@
         async function handleSend() {
             const userInput = elements.chatInput.value.trim();
             if (userInput === '' || appState.isThinking) return;
-
-            await saveMessage('user', userInput);
+            
+            const tempUserInput = userInput;
             elements.chatInput.value = '';
             renderQuickReplies([]);
-
-            await handleConversation(userInput);
+            
+            await saveMessage('user', tempUserInput);
+            // A chamada para handleConversation agora não precisa do input, pois o histórico já foi atualizado pelo listener.
+            await handleConversation();
         }
         
-        function startConversation() {
+        async function startConversation() {
              const welcomeMessage = "Olá! Sou a Centelha, a sua assistente da Oficina FG Motos. Para começarmos, qual é o seu nome?";
-             addMessageToUI('assistant', welcomeMessage, ["Meu nome é...", "Queria saber o endereço"]);
-             saveMessage('assistant', welcomeMessage);
-             
-             appState.conversationHistory = [{
-                 role: 'model',
-                 parts: [{ text: welcomeMessage }]
-             }];
+             // Salva a mensagem primeiro, o listener irá renderizá-la
+             await saveMessage('assistant', welcomeMessage);
+             renderQuickReplies(["Meu nome é...", "Queria saber o endereço"]);
              toggleThinking(false);
          }
 
