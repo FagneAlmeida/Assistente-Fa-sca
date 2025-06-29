@@ -245,8 +245,8 @@
         async function isValidName(name) {
             if (name.split(' ').length > 5 || /\d/.test(name)) return false; // Filtro rápido inicial
 
-            // --- MELHORIA --- Prompt mais flexível para reconhecer variações de nomes.
-            const validationPrompt = `Analise o texto a seguir: "${name}". Ele se parece com um nome de pessoa, considerando nomes comuns, apelidos, nomes incomuns como 'Fagne' ou mesmo nomes com pequenos erros de digitação (como 'jovana' em vez de 'Joana')? Responda apenas "SIM" ou "NAO".`;
+            // --- MELHORIA --- Prompt mais rigoroso para rejeitar palavras comuns e aceitar apenas nomes.
+            const validationPrompt = `Analise o texto a seguir: "${name}". Este texto é um nome próprio de pessoa, um apelido, ou uma variação de um nome (como 'Fagne' ou 'Jovana')? É crucial que você rejeite substantivos comuns, objetos (como 'pneu', 'motor'), adjetivos (como 'quebrada') ou qualquer outra palavra que não seja um nome. Responda apenas "SIM" ou "NAO".`;
             try {
                 const data = await callGeminiAPI(validationPrompt, 5); // Poucos tokens, resposta rápida
                 if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
