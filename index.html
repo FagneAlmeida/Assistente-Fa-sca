@@ -209,7 +209,6 @@
         async function saveMessage(sender, text) {
             if (!appState.isAuthReady || !appState.chatId || !appState.db) return null;
             try {
-                // O caminho do Firestore está correto para as regras de segurança.
                 const messagesCol = collection(appState.db, `artifacts/${appState.appId}/users/${appState.userId}/chats/${appState.chatId}/messages`);
                 const docRef = await addDoc(messagesCol, { sender, text, createdAt: serverTimestamp() });
                 return docRef.id;
@@ -394,27 +393,33 @@
             lucide.createIcons();
             attachEventListeners();
             
-            // --- Configuração Segura do Firebase ---
-            // As chaves de configuração hardcoded foram removidas.
-            // A aplicação agora utiliza as variáveis de ambiente (__firebase_config)
-            // que são injetadas de forma segura pelo ambiente de execução.
             let firebaseConfig;
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                try {
+            try {
+                // Tenta carregar a configuração segura do ambiente primeiro.
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    console.log("Configuração do Firebase encontrada no ambiente. Usando a versão segura.");
                     firebaseConfig = JSON.parse(__firebase_config);
-                } catch(e) {
-                    console.error("Erro ao analisar a configuração do Firebase fornecida pelo ambiente.", e);
-                    addMessageToUI('assistant', 'Erro Crítico: A configuração do servidor é inválida.', 'err-config');
-                    return;
+                } else {
+                    // Lança um erro para ser pego pelo bloco catch se a variável de ambiente não existir.
+                    throw new Error("Variável de ambiente __firebase_config não encontrada.");
                 }
-            } else {
-                console.error("Configuração do Firebase não encontrada. As chaves devem ser injetadas pelo ambiente.");
-                addMessageToUI('assistant', 'Erro Crítico: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
-                return; // Interrompe a execução se a configuração não estiver disponível.
+            } catch (e) {
+                // Se falhar (ex: no preview local), usa a configuração de fallback.
+                console.warn(`AVISO: ${e.message} Usando configuração de fallback para DESENVOLVIMENTO. NÃO USE EM PRODUÇÃO.`);
+                firebaseConfig = {
+                    apiKey: "AIzaSyBYSzG5XKIvCa1iFVOjALdooVSf1HsyeJ8",
+                    authDomain: "centelha-e931b.firebaseapp.com",
+                    projectId: "centelha-e931b",
+                    storageBucket: "centelha-e931b.appspot.com",
+                    messagingSenderId: "639426563285",
+                    appId: "1:639426563285:web:676bc24c3f32475478a65c",
+                    measurementId: "G-BR4P0XVTPB"
+                };
             }
 
-            if (!firebaseConfig.projectId) {
-                addMessageToUI('assistant', 'Aviso: A configuração do servidor está incompleta. O chat não pode funcionar.', 'err-config');
+            if (!firebaseConfig || !firebaseConfig.projectId) {
+                addMessageToUI('assistant', 'Aviso: A configuração do servidor está em falta. O chat não pode funcionar.', 'err-config');
+                console.error("A configuração final do Firebase é inválida ou está em falta.");
                 return;
             }
 
@@ -432,7 +437,6 @@
                 });
                 
                 let initialToken = null;
-                // Verifica de forma segura se o token inicial existe
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     initialToken = __initial_auth_token;
                 }
@@ -440,7 +444,6 @@
                 if (initialToken) {
                     await signInWithCustomToken(appState.auth, initialToken);
                 } else {
-                    // Como fallback, realiza login anônimo se nenhum token for fornecido
                     await signInAnonymously(appState.auth);
                 }
             } catch (error) {
