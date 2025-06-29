@@ -471,6 +471,7 @@
 
                 Forneça 2 ou 3 causas mais comuns para o problema descrito, de forma clara e simples.
                 Seja breve e direto.
+                NÃO use NENHUM tipo de formatação, como markdown (negrito com **, itálico com *, etc). Responda em texto puro.
                 Ao final, inclua OBRIGATORIAMENTE este aviso: "Lembre-se, ${appState.customerData.name}, que esta é uma análise inicial. Para um diagnóstico preciso e seguro, o ideal é trazer sua ${appState.customerData.moto} para nossos mecânicos avaliarem aqui na oficina."
             `;
             
@@ -618,13 +619,12 @@
 
             } catch (error) {
                 console.error("Falha na inicialização do Firebase ou Autenticação:", error);
-                // **FIX:** Adiciona uma verificação específica para o erro de configuração de autenticação.
                 if (error.code === 'auth/configuration-not-found') {
                     addMessageToUI('assistant', '<b>Erro de Configuração:</b> O método de login "Anónimo" precisa ser ativado no seu projeto Firebase. <br><br> 1. Vá para o seu <b>Console do Firebase</b>. <br> 2. Clique em <b>Authentication</b>. <br> 3. Vá para a aba <b>Sign-in method</b>. <br> 4. Ative o provedor <b>Anónimo</b>.');
                 } else {
                     addMessageToUI('assistant', 'Erro de ligação com os nossos sistemas. Por favor, recarregue a página.');
                 }
-                toggleThinking(true); // Desativa a entrada de texto, pois o aplicativo não pode continuar
+                toggleThinking(true); 
             }
         }
 
